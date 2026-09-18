@@ -92,7 +92,7 @@ export const repo = {
      VALUES ($1,$2,$3,$4,TRUE,now())
      ON CONFLICT (table_address) DO UPDATE SET entries=EXCLUDED.entries, entry_count=EXCLUDED.entry_count, refreshed_at=now()
      RETURNING *`,
-    [a.tableAddress, a.creator, a.entries, a.entryCount],
+    [a.tableAddress, a.creator, JSON.stringify(a.entries), a.entryCount],
   ),
 
   tx,
