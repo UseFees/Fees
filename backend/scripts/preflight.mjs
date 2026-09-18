@@ -12,9 +12,13 @@ const results = [];
 const check = async (name, fn) => { try { const detail = await fn(); results.push({ name, ok: true, detail }); } catch (e) { results.push({ name, ok: false, detail: e.message }); } };
 
 await check('economics locked 9000/1000', () => { if (MODULE_SHARE_BPS !== 9000 || FEES_SHARE_BPS !== 1000) throw new Error(`got ${MODULE_SHARE_BPS}/${FEES_SHARE_BPS}`); return '9000/1000'; });
-await check('$FEES mint pinned', () => {
+await check('$FEES mint exists + parses', async () => {
   if (!FEES_MINT_ADDRESS) throw new Error('FEES_MINT_ADDRESS is not configured');
-  return FEES_MINT_ADDRESS;
+  const info = await connection().getParsedAccountInfo(new (await import('@solana/web3.js')).PublicKey(FEES_MINT_ADDRESS), config.rpcCommitment);
+  if (!info.value) throw new Error('pinned FEES mint account does not exist on chain');
+  const parsed = info.value.data?.parsed;
+  if (parsed?.type !== 'mint') throw new Error(`account exists but is not a parsed SPL mint (type=${parsed?.type ?? 'unknown'})`);
+  return `${FEES_MINT_ADDRESS} decimals=${parsed.info.decimals} supply=${parsed.info.supply}`;
 });
 await check('RPC cluster matches EXPECTED_GENESIS', async () => { await assertCluster(); return config.expectedGenesis; });
 await check('pump Global readable', async () => { const g = await loadGlobal(); return `create_v2_enabled=${g.createV2Enabled}, creator_fee_bps=${g.creatorFeeBasisPoints}`; });
@@ -22,7 +26,15 @@ await check('launch ALT usable (22 entries)', async () => { const g = await load
 await check('launch wallet funded', async () => { const bal = await connection().getBalance(config.launchWallet); if (bal < 100_000_000) throw new Error(`only ${bal} lamports; fund the launch wallet`); return `${(bal / 1e9).toFixed(3)} SOL`; });
 await check('crank wallet funded', async () => { const bal = await connection().getBalance(config.crankWallet); if (bal < 10_000_000) throw new Error(`only ${bal} lamports`); return `${(bal / 1e9).toFixed(3)} SOL`; });
 await check('database reachable + migrated', async () => { const r = await pool.query("SELECT count(*)::int AS n FROM information_schema.tables WHERE table_name IN ('coins','launch_intents','receipts','modules','epochs','epoch_distributions','alt_tables')"); if (r.rows[0].n < 7) throw new Error(`only ${r.rows[0].n}/7 tables — run npm run migrate`); return 'all tables present'; });
-await check('signer reachable', async () => { const res = await fetch(`${config.signer.url}/health`, { headers: { authorization: `Bearer ${config.signer.token ?? ''}` } }); if (!res.ok) throw new Error(`signer /health -> ${res.status}`); const j = await res.json(); if (j.launchWallet !== config.launchWallet.toBase58()) throw new Error(`signer launch wallet ${j.launchWallet} != config ${config.launchWallet.toBase58()}`); return `signer launch wallet matches`; });
+await check('signer reachable + identities match', async () => {
+  const res = await fetch(`${config.signer.url}/health`, { headers: { authorization: `Bearer ${config.signer.token ?? ''}` } });
+  if (!res.ok) throw new Error(`signer /health -> ${res.status}`);
+  const j = await res.json();
+  if (j.launchWallet !== config.launchWallet.toBase58()) throw new Error(`signer launch wallet ${j.launchWallet} != config ${config.launchWallet.toBase58()}`);
+  if (j.crankWallet !== config.crankWallet.toBase58()) throw new Error(`signer crank wallet ${j.crankWallet} != config ${config.crankWallet.toBase58()}`);
+  if (j.feesMintConfigured && j.feesMintMatches === false) throw new Error('configured FEES mint signer does not match pinned FEES mint');
+  return `launch+crank match; feesMintSigner=${j.feesMintConfigured ? (j.feesMintMatches ? 'matches' : 'mismatch') : 'not-configured'}`;
+});
 await check('LAUNCH_ENABLED', () => { if (!config.launchEnabled) throw new Error('false — launches will 503 until set true'); return 'true'; });
 
 for (const r of results) console.log(`${r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.detail ? `  — ${r.detail}` : ''}`);
