@@ -6,7 +6,7 @@
 import express from 'express';
 import { config } from '../config.mjs';
 import { log } from '../logger.mjs';
-import { newLaunchMint, signAndSubmitLaunch, signAndSubmitCrank, releaseLaunchMint, launchWalletPubkey, crankWalletPubkey } from './core.mjs';
+import { newLaunchMint, reserveFeesLaunchMint, feesMintSignerStatus, signAndSubmitLaunch, signAndSubmitCrank, releaseLaunchMint, launchWalletPubkey, crankWalletPubkey } from './core.mjs';
 
 const app = express();
 app.use(express.json({ limit: '256kb' }));
@@ -21,12 +21,25 @@ function authed(req) {
 }
 app.use((req, res, next) => { if (!authed(req)) return res.status(401).json({ error: 'unauthorized' }); next(); });
 
-app.get('/health', (_req, res) => res.json({ ok: true, launchWallet: launchWalletPubkey(), crankWallet: crankWalletPubkey() }));
+app.get('/health', (_req, res) => {
+  const feesMint = feesMintSignerStatus();
+  res.json({ ok: true, launchWallet: launchWalletPubkey(), crankWallet: crankWalletPubkey(), feesMintConfigured: feesMint.configured, feesMintMatches: feesMint.matches, feesMint: feesMint.publicKey ?? feesMint.expected ?? null });
+});
 
 app.post('/mint', (req, res) => {
   const { launchId } = req.body ?? {};
   if (!launchId) return res.status(400).json({ error: 'launchId required' });
   res.json({ mint: newLaunchMint(launchId) });
+});
+
+app.post('/mint/fees', (req, res) => {
+  try {
+    const { launchId } = req.body ?? {};
+    if (!launchId) return res.status(400).json({ error: 'launchId required' });
+    res.json({ mint: reserveFeesLaunchMint(launchId) });
+  } catch (e) {
+    res.status(422).json({ error: e.message, code: 'fees_mint_unavailable' });
+  }
 });
 
 app.post('/sign/launch', async (req, res) => {
