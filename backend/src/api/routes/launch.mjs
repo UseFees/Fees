@@ -25,7 +25,7 @@ export const launchRouter = Router();
 function badRequest(msg, code = 'bad_request') { const e = new Error(msg); e.status = 400; e.code = code; return e; }
 
 function parseLaunchInput(body) {
-  const { requestKey, name, symbol, uri, moduleId } = body ?? {};
+  const { requestKey, name, symbol, uri, moduleId, moduleDest } = body ?? {};
   if (!requestKey || typeof requestKey !== 'string' || requestKey.length < 8) throw badRequest('requestKey (idempotency key, >=8 chars) is required');
   if (!name || !symbol) throw badRequest('name and symbol are required');
   if (String(name).length > 32 || String(symbol).length > 10) throw badRequest('name<=32 and symbol<=10 chars');
@@ -33,7 +33,7 @@ function parseLaunchInput(body) {
   let devBuyLamports = body.devBuyLamports != null ? Number(body.devBuyLamports) : config.defaultDevBuyLamports;
   if (!Number.isFinite(devBuyLamports) || devBuyLamports < 0) throw badRequest('devBuyLamports must be a non-negative integer (lamports)');
   if (devBuyLamports > config.maxDevBuyLamports) throw badRequest(`devBuyLamports exceeds the cap of ${config.maxDevBuyLamports}`, 'dev_buy_too_large');
-  return { requestKey, name: String(name), symbol: String(symbol), uri: uri ? String(uri) : '', moduleId: String(moduleId), devBuyLamports: Math.floor(devBuyLamports) };
+  return { requestKey, name: String(name), symbol: String(symbol), uri: uri ? String(uri) : '', moduleId: String(moduleId), moduleDest: moduleDest ? String(moduleDest) : '', devBuyLamports: Math.floor(devBuyLamports) };
 }
 
 function intentToPreview(intent, extra = {}) {
@@ -58,7 +58,17 @@ launchRouter.post('/prepare', h(async (req, res) => {
 
   const module = await repo.getModule(input.moduleId);
   if (!module) throw badRequest(`unknown or disabled module '${input.moduleId}'`, 'unknown_module');
-  const moduleDest = new PublicKey(module.module_dest);
+
+  const requiresDestination = Boolean(module.config?.requiresDestination);
+  let moduleDest;
+  if (requiresDestination) {
+    if (!input.moduleDest) throw badRequest('payout address is required for this fee option', 'module_dest_required');
+    try { moduleDest = new PublicKey(input.moduleDest); }
+    catch { throw badRequest('payout address is not a valid Solana address', 'invalid_module_dest'); }
+    if (moduleDest.equals(config.buybackDest)) throw badRequest('payout address must differ from the FEES buyback destination', 'module_dest_conflict');
+  } else {
+    moduleDest = new PublicKey(module.module_dest);
+  }
 
   const launchId = randomUUID();
   const mint = await signer.newLaunchMint(launchId); // signer owns the secret
@@ -67,7 +77,7 @@ launchRouter.post('/prepare', h(async (req, res) => {
   const expiresAt = new Date(Date.now() + config.launchIntentTtlSeconds * 1000).toISOString();
   const intent = await repo.insertIntent({
     id: launchId, requestKey: input.requestKey, moduleId: input.moduleId,
-    params: { ...input, moduleDest: module.module_dest, buybackDest: config.buybackDest.toBase58() },
+    params: { ...input, moduleDest: moduleDest.toBase58(), buybackDest: config.buybackDest.toBase58() },
     mint, messageB64: built.messageBase64, blockhash: built.blockhash, lastValidBlockHeight: built.lastValidBlockHeight,
     sizeBytes: built.limits.sizeBytes, accountCount: built.limits.accountCount, expiresAt,
   });
@@ -80,7 +90,7 @@ launchRouter.post('/prepare', h(async (req, res) => {
   log.info('launch prepared', { launchId, mint, module: input.moduleId, sizeBytes: built.limits.sizeBytes, accountCount: built.limits.accountCount });
   res.json({
     ...intentToPreview(intent, {
-      module: { id: module.id, moduleDest: module.module_dest, buybackDest: config.buybackDest.toBase58(), split: { moduleBps: 9000, feesBps: 1000 } },
+      module: { id: module.id, moduleDest: moduleDest.toBase58(), buybackDest: config.buybackDest.toBase58(), requiresDestination, split: { moduleBps: 9000, feesBps: 1000 } },
       limits: built.limits,
       launchOrder: built.instructionNames,
       preview: { name: input.name, symbol: input.symbol, devBuyLamports: String(input.devBuyLamports), sharingConfig: built.sharingConfig.toBase58(), sharingVault: built.sharingVault.toBase58() },
@@ -113,7 +123,7 @@ async function finalizeLaunch(intent, mint, signature, splitVerified) {
   const coin = await repo.insertCoin({
     id: randomUUID(), mint: intent.mint, name: intent.params.name, symbol: intent.params.symbol, uri: intent.params.uri,
     launchWallet: config.launchWallet.toBase58(), sharingConfig: sharingConfig.toBase58(), sharingVault: pdas.creatorVault(sharingConfig).toBase58(),
-    bondingCurve: pdas.bondingCurve(mint).toBase58(), moduleId: intent.module_id, moduleDest: module.module_dest, buybackDest: config.buybackDest.toBase58(),
+    bondingCurve: pdas.bondingCurve(mint).toBase58(), moduleId: intent.module_id, moduleDest: intent.params.moduleDest, buybackDest: config.buybackDest.toBase58(),
     launchSignature: signature, launchSlot: null, intentId: intent.id, splitVerified,
   });
   if (coin) { // first finalize only
