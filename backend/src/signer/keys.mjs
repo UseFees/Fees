@@ -18,3 +18,17 @@ export function loadKeypairFromFile(path, label) {
   }
   return Keypair.fromSecretKey(Uint8Array.from(secret));
 }
+
+
+export function loadKeypair({ path, json }, label) {
+  if (json) {
+    let secret;
+    try { secret = JSON.parse(json); }
+    catch { throw new Error(`${label}: keypair env is not valid JSON`); }
+    if (!Array.isArray(secret) || (secret.length !== 64 && secret.length !== 32)) {
+      throw new Error(`${label}: keypair env is not a 32/64-byte secret array`);
+    }
+    return Keypair.fromSecretKey(Uint8Array.from(secret));
+  }
+  return loadKeypairFromFile(path, label);
+}
