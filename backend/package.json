@@ -14,7 +14,8 @@
     "preflight": "node scripts/preflight.mjs",
     "test:integration": "node test/integration.mjs",
     "test:security": "node test/signer_security.mjs",
-    "check": "node --check src/api/server.mjs && node --check src/epoch/worker.mjs && node --check src/signer/service.mjs && node --check test/integration.mjs && node --check test/signer_security.mjs"
+    "test:confirm": "node test/confirm.mjs",
+    "check": "node --check src/api/server.mjs && node --check src/epoch/worker.mjs && node --check src/signer/service.mjs && node --check src/api/routes/launch.mjs && node --check test/integration.mjs && node --check test/signer_security.mjs && node --check test/confirm.mjs"
   },
   "dependencies": {
     "@solana/web3.js": "^1.98.0",

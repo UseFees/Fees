@@ -35,6 +35,14 @@ export const repo = {
      WHERE id=$1 AND status='prepared' RETURNING *`,
     [id],
   ),
+  // Persist the SUBMITTED transaction tuple (signature + the fresh blockhash the
+  // signer used) so a retry confirms the exact same tuple and never re-signs
+  // blindly. Status stays 'confirming'.
+  setIntentSubmitted: (id, patch) => one(
+    `UPDATE launch_intents SET signature=$2, blockhash=$3, last_valid_block_height=$4, status='confirming', updated_at=now()
+     WHERE id=$1 RETURNING *`,
+    [id, patch.signature, patch.blockhash, patch.lastValidBlockHeight],
+  ),
 
   // ---- coins ----
   getCoinByMint: (mint) => one('SELECT * FROM coins WHERE mint=$1', [mint]),

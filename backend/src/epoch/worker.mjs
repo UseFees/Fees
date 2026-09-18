@@ -12,7 +12,7 @@
 import { randomUUID } from 'node:crypto';
 import { config } from '../config.mjs';
 import { log } from '../logger.mjs';
-import { connection, assertCluster, confirmSignature } from '../solanaClient.mjs';
+import { connection, assertCluster, confirmOrCheckSignature, getTx } from '../solanaClient.mjs';
 import { repo } from '../db/repo.mjs';
 import { signer } from '../signer/index.mjs';
 import { receiptOf } from '../receipts/solscan.mjs';
@@ -66,7 +66,15 @@ async function distributeForCoin(epochIndex, coin) {
   const { blockhash, lastValidBlockHeight } = await connection().getLatestBlockhash(config.rpcCommitment);
   const tx = buildV0(new PublicKey(config.crankWallet), [ix], blockhash);
   const { signature } = await signer.signAndSubmitCrank({ messageBase64: Buffer.from(tx.message.serialize()).toString('base64') });
-  const confirmed = await confirmSignature(signature, blockhash, lastValidBlockHeight);
+  // Non-throwing confirm: an expired/failed crank is recorded, not crashed. The
+  // epoch_distributions UNIQUE(epoch,coin) row is already claimed, so a failed
+  // distribution simply waits for the next epoch (idempotent, no double-pay).
+  const outcome = await confirmOrCheckSignature(connection(), { signature, lastValidBlockHeight });
+  if (!outcome.landed || outcome.err) {
+    await repo.finishEpochDistribution(claim.id, { status: 'failed', signature, error: outcome.err ? JSON.stringify(outcome.err) : outcome.status });
+    return { status: 'failed', signature, reason: outcome.status };
+  }
+  const confirmed = await getTx(signature);
 
   // Exact deltas from the confirmed transaction.
   const keys = confirmed?.transaction.message.staticAccountKeys ?? [];

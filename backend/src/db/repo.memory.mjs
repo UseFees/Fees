@@ -45,6 +45,11 @@ export const repo = {
     const row = intents.get(id); if (!row || row.status !== 'prepared') return null;
     row.status = 'confirming'; row.updated_at = new Date().toISOString(); return clone(row);
   },
+  async setIntentSubmitted(id, patch) {
+    const row = intents.get(id); if (!row) return null;
+    row.signature = patch.signature; row.blockhash = patch.blockhash; row.last_valid_block_height = patch.lastValidBlockHeight; row.status = 'confirming'; row.updated_at = new Date().toISOString();
+    return clone(row);
+  },
 
   // ---- coins ----
   async getCoinByMint(mint) { const id = coinsByMint.get(mint); return id ? clone(coins.get(id)) : null; },

@@ -127,13 +127,27 @@ export async function signAndSubmitLaunch({ launchId, messageBase64 }) {
     e.code = 'validation_failed'; throw e;
   }
 
+  // Sign against a FRESH blockhash fetched at sign time, not the stale one the
+  // API compiled at prepare. Only recentBlockhash changes; the instructions,
+  // accounts and ALT lookups are exactly what was validated above. This is what
+  // eliminates the "block height exceeded" expiry between prepare and confirm.
+  const { blockhash, lastValidBlockHeight } = await connection().getLatestBlockhash(config.rpcCommitment);
+  message.recentBlockhash = blockhash;
   const tx = new VersionedTransaction(message);
   tx.sign([launchKp(), stored.kp]);
-  const signature = await connection().sendTransaction(tx, { skipPreflight: false, maxRetries: 5 });
-  mints.delete(launchId);
-  log.info('launch signed and submitted', { launchId, signature, mint: stored.kp.publicKey.toBase58(), moduleDest: moduleDest.toBase58() });
-  return { signature, mint: stored.kp.publicKey.toBase58() };
+
+  // sendRawTransaction so the caller confirms with the exact tuple below. The
+  // ephemeral mint is NOT deleted here: a retry re-signs the SAME mint with a
+  // fresh blockhash, so no second mint can ever be created. create_v2 with an
+  // existing mint fails, so at most one attempt can actually create the coin.
+  const signature = await connection().sendRawTransaction(tx.serialize(), { skipPreflight: false, maxRetries: 5 });
+  log.info('launch signed and submitted', { launchId, signature, mint: stored.kp.publicKey.toBase58(), moduleDest: moduleDest.toBase58(), lastValidBlockHeight });
+  return { signature, blockhash, lastValidBlockHeight, mint: stored.kp.publicKey.toBase58() };
 }
+
+// Release an ephemeral mint once the launch is confirmed (or abandoned). Safe to
+// call more than once. Kept explicit so the API drops the secret promptly.
+export function releaseLaunchMint(launchId) { mints.delete(launchId); }
 
 // Crank signing (collect/distribute). These are permissionless on chain, so the
 // crank wallet only pays fees; the rule is simply that it may not be tricked

@@ -15,7 +15,7 @@ import { config, assertWritable } from '../../config.mjs';
 import { repo } from '../../db/repo.mjs';
 import { signer } from '../../signer/index.mjs';
 import { buildLaunch } from '../../launch/builder.mjs';
-import { assertCluster, connection, confirmSignature } from '../../solanaClient.mjs';
+import { assertCluster, connection, confirmOrCheckSignature, getTx } from '../../solanaClient.mjs';
 import { receiptOf, solscan } from '../../receipts/solscan.mjs';
 import { decodeBondingCurve, decodeSharingConfig, pdas } from '../../phase0.mjs';
 import { log } from '../../logger.mjs';
@@ -88,66 +88,127 @@ launchRouter.post('/prepare', h(async (req, res) => {
   });
 }));
 
+const MAX_LAUNCH_ATTEMPTS = Number(process.env.LAUNCH_MAX_SUBMIT_ATTEMPTS ?? 3);
+const CONFIRM_TIMEOUT_MS = Number(process.env.LAUNCH_CONFIRM_TIMEOUT_MS ?? 45_000);
+
+// The idempotency source of truth is ON-CHAIN state, not a specific signature.
+// If the mint's bonding_curve.creator == sharing_config and the split is
+// installed, the launch happened — whichever attempt landed it.
+async function readLaunchState(mint) {
+  const sharingConfig = pdas.sharingConfig(mint);
+  const [bcInfo, scInfo] = await Promise.all([connection().getAccountInfo(pdas.bondingCurve(mint)), connection().getAccountInfo(sharingConfig)]);
+  const curve = decodeBondingCurve(bcInfo?.data);
+  const sc = scInfo ? decodeSharingConfig(scInfo.data) : null;
+  const installed = Boolean(curve && curve.creator.equals(sharingConfig)) && Boolean(sc && sc.adminRevoked && sc.totalBps === 10000);
+  return { sharingConfig, installed, splitVerified: installed };
+}
+
+// Persist the coin + receipt exactly once and return the success payload.
+// insertCoin is ON CONFLICT (mint) DO NOTHING, so concurrent confirms converge
+// to a single coin and a single launch.
+async function finalizeLaunch(intent, mint, signature, splitVerified) {
+  const sharingConfig = pdas.sharingConfig(mint);
+  const module = await repo.getModule(intent.module_id);
+  const alreadyConfirmed = intent.status === 'confirmed';
+  const coin = await repo.insertCoin({
+    id: randomUUID(), mint: intent.mint, name: intent.params.name, symbol: intent.params.symbol, uri: intent.params.uri,
+    launchWallet: config.launchWallet.toBase58(), sharingConfig: sharingConfig.toBase58(), sharingVault: pdas.creatorVault(sharingConfig).toBase58(),
+    bondingCurve: pdas.bondingCurve(mint).toBase58(), moduleId: intent.module_id, moduleDest: module.module_dest, buybackDest: config.buybackDest.toBase58(),
+    launchSignature: signature, launchSlot: null, intentId: intent.id, splitVerified,
+  });
+  if (coin) { // first finalize only
+    const tx = signature ? await getTx(signature).catch(() => null) : null;
+    await repo.insertReceipt(receiptOf({ kind: 'launch', coinId: coin.id, signature: signature ?? 'unknown', slot: tx?.slot ?? null, feeLamports: tx?.meta?.fee ?? null, payload: { mint: intent.mint, splitVerified } }));
+  }
+  await repo.setIntentStatus(intent.id, 'confirmed', { signature });
+  await signer.releaseLaunchMint(intent.id);
+  const finalCoin = coin ?? await repo.getCoinByMint(intent.mint);
+  log.info('launch confirmed', { launchId: intent.id, mint: intent.mint, signature, splitVerified, reused: !coin });
+  return { status: 'confirmed', launchId: intent.id, signature, splitVerified, coin: publicCoin(finalCoin), solscan: { tx: signature ? solscan.tx(signature) : null, token: solscan.token(intent.mint) } };
+}
+
 launchRouter.post('/confirm', h(async (req, res) => {
   assertWritable();
   await assertCluster();
   const { launchId } = req.body ?? {};
   if (!launchId) throw badRequest('launchId is required');
 
-  const intent = await repo.getIntent(launchId);
+  let intent = await repo.getIntent(launchId);
   if (!intent) throw badRequest('unknown launchId', 'unknown_launch');
+  const mint = new PublicKey(intent.mint);
+
+  // Already confirmed → idempotent success.
   if (intent.status === 'confirmed') {
     const coin = await repo.getCoinByMint(intent.mint);
-    return res.json({ idempotent: true, status: 'confirmed', launchId, signature: intent.signature, coin: coin ? publicCoin(coin) : null, solscan: solscan.tx(intent.signature) });
-  }
-  if (new Date(intent.expires_at).getTime() < Date.now()) {
-    await repo.setIntentStatus(launchId, 'expired');
-    throw badRequest('launch intent expired; call /launch/prepare again', 'expired');
+    return res.json({ idempotent: true, status: 'confirmed', launchId, signature: intent.signature, coin: publicCoin(coin), solscan: { tx: intent.signature ? solscan.tx(intent.signature) : null, token: solscan.token(intent.mint) } });
   }
 
-  // Only one confirm may proceed.
-  const claimed = await repo.claimIntentForConfirm(launchId);
-  if (!claimed) {
-    const cur = await repo.getIntent(launchId);
-    if (cur.status === 'confirmed') { const coin = await repo.getCoinByMint(cur.mint); return res.json({ idempotent: true, status: 'confirmed', launchId, signature: cur.signature, coin: coin ? publicCoin(coin) : null }); }
-    throw badRequest(`launch is ${cur.status}; not confirmable`, 'not_confirmable');
+  // Before doing anything, if the launch already landed on chain (e.g. a prior
+  // attempt succeeded but its confirm response was lost), finalize idempotently.
+  {
+    const st = await readLaunchState(mint);
+    if (st.installed) { intent = await repo.getIntent(launchId); return res.json({ idempotent: true, ...(await finalizeLaunch(intent, mint, intent.signature, st.splitVerified)) }); }
   }
 
-  let signature;
-  try {
-    ({ signature } = await signer.signAndSubmitLaunch({ launchId, messageBase64: intent.message_b64 }));
-  } catch (e) {
-    await repo.setIntentStatus(launchId, 'failed', { error: e.message });
-    e.status = e.status ?? 502; throw e;
+  // Claim prepared → confirming so only one caller submits the first time.
+  if (intent.status === 'prepared') {
+    const claimed = await repo.claimIntentForConfirm(launchId);
+    if (!claimed) intent = await repo.getIntent(launchId); // lost the race; fall through to resume
+    else intent = claimed;
+  }
+  if (intent.status === 'failed') throw badRequest('launch failed; call /launch/prepare again with a new requestKey', 'launch_failed');
+  if (intent.status !== 'confirming') throw badRequest(`launch is ${intent.status}; not confirmable`, 'not_confirmable');
+
+  // Submit (or resubmit with a fresh blockhash, SAME mint) and confirm, up to
+  // MAX_LAUNCH_ATTEMPTS. Never re-signs without first checking on-chain state,
+  // so a landed launch is never resubmitted and a second mint is never made.
+  let lastSignature = intent.signature ?? null;
+  let bh = intent.blockhash, lvbh = intent.last_valid_block_height != null ? Number(intent.last_valid_block_height) : null;
+
+  for (let attempt = 0; attempt < MAX_LAUNCH_ATTEMPTS; attempt++) {
+    // If we don't yet have a submitted signature for this attempt, submit one.
+    if (!lastSignature || attempt > 0) {
+      // Re-check chain first so we never resubmit over a landed launch.
+      const pre = await readLaunchState(mint);
+      if (pre.installed) return res.json(await finalizeLaunch(intent, mint, lastSignature, pre.splitVerified));
+      let submit;
+      try {
+        submit = await signer.signAndSubmitLaunch({ launchId, messageBase64: intent.message_b64 });
+      } catch (e) {
+        // Mint gone (signer restarted / TTL) after prior submit → decide by chain.
+        const post = await readLaunchState(mint);
+        if (post.installed) return res.json(await finalizeLaunch(intent, mint, lastSignature, post.splitVerified));
+        if (e.code === 'mint_missing') { await repo.setIntentStatus(launchId, 'failed', { error: e.message }); throw badRequest('launch could not be completed and the ephemeral mint expired; call /launch/prepare again', 'expired_resubmit'); }
+        await repo.setIntentStatus(launchId, 'failed', { error: e.message }); e.status = e.status ?? 502; throw e;
+      }
+      lastSignature = submit.signature; bh = submit.blockhash; lvbh = Number(submit.lastValidBlockHeight);
+      await repo.setIntentSubmitted(launchId, { signature: lastSignature, blockhash: bh, lastValidBlockHeight: lvbh });
+    }
+
+    const result = await confirmOrCheckSignature(connection(), { signature: lastSignature, lastValidBlockHeight: lvbh, timeoutMs: CONFIRM_TIMEOUT_MS });
+
+    if (result.landed && !result.err) {
+      const st = await readLaunchState(mint);
+      return res.json(await finalizeLaunch(intent, mint, lastSignature, st.splitVerified));
+    }
+    if (result.landed && result.err) {
+      // Executed and failed. But a DIFFERENT (racing) attempt may have created
+      // the coin — trust chain state over this signature.
+      const st = await readLaunchState(mint);
+      if (st.installed) return res.json(await finalizeLaunch(intent, mint, lastSignature, st.splitVerified));
+      await repo.setIntentStatus(launchId, 'failed', { signature: lastSignature, error: JSON.stringify(result.err) });
+      const e = new Error('launch transaction failed on chain'); e.status = 422; e.code = 'launch_failed_onchain'; throw e;
+    }
+    // Not landed (expired or timeout). Loop will re-check chain, then resubmit
+    // with a fresh blockhash on the next attempt.
+    log.warn('launch not yet landed; will re-check/resubmit', { launchId, attempt, status: result.status, signature: lastSignature });
   }
 
-  const confirmed = await confirmSignature(signature, intent.blockhash, Number(intent.last_valid_block_height));
-  if (!confirmed || confirmed.meta?.err) {
-    await repo.setIntentStatus(launchId, 'failed', { signature, error: JSON.stringify(confirmed?.meta?.err ?? 'not confirmed') });
-    const e = new Error('launch transaction failed on chain'); e.status = 502; e.code = 'launch_failed'; e.signature = signature; throw e;
-  }
-
-  // Verify the split actually installed: bonding_curve.creator == sharing_config
-  // and the config is 9000/1000 with admin_revoked.
-  const mint = new PublicKey(intent.mint);
-  const sharingConfig = pdas.sharingConfig(mint);
-  const [bcInfo, scInfo] = await Promise.all([connection().getAccountInfo(pdas.bondingCurve(mint)), connection().getAccountInfo(sharingConfig)]);
-  const curve = decodeBondingCurve(bcInfo?.data);
-  const sc = scInfo ? decodeSharingConfig(scInfo.data) : null;
-  const splitVerified = Boolean(curve && curve.creator.equals(sharingConfig)) && Boolean(sc && sc.adminRevoked && sc.totalBps === 10000);
-
-  const module = await repo.getModule(intent.module_id);
-  const coin = await repo.insertCoin({
-    id: randomUUID(), mint: intent.mint, name: intent.params.name, symbol: intent.params.symbol, uri: intent.params.uri,
-    launchWallet: config.launchWallet.toBase58(), sharingConfig: sharingConfig.toBase58(), sharingVault: pdas.creatorVault(sharingConfig).toBase58(),
-    bondingCurve: pdas.bondingCurve(mint).toBase58(), moduleId: intent.module_id, moduleDest: module.module_dest, buybackDest: config.buybackDest.toBase58(),
-    launchSignature: signature, launchSlot: confirmed.slot ?? null, intentId: launchId, splitVerified,
-  });
-  await repo.setIntentStatus(launchId, 'confirmed', { signature });
-  await repo.insertReceipt(receiptOf({ kind: 'launch', coinId: coin?.id ?? null, signature, slot: confirmed.slot ?? null, feeLamports: confirmed.meta?.fee ?? null, payload: { mint: intent.mint, splitVerified } }));
-
-  log.info('launch confirmed', { launchId, mint: intent.mint, signature, splitVerified });
-  res.json({ status: 'confirmed', launchId, signature, splitVerified, coin: coin ? publicCoin(coin) : await repo.getCoinByMint(intent.mint).then(publicCoin), solscan: { tx: solscan.tx(signature), token: solscan.token(intent.mint) } });
+  // Exhausted attempts without landing. Final chain check, else retry-safe 202.
+  const finalState = await readLaunchState(mint);
+  if (finalState.installed) return res.json(await finalizeLaunch(intent, mint, lastSignature, finalState.splitVerified));
+  // Leave status 'confirming' so /launch/confirm can be safely retried later.
+  return res.status(202).json({ status: 'pending', retryable: true, launchId, signature: lastSignature, message: 'launch submitted but not yet confirmed; retry /launch/confirm with the same launchId' });
 }));
 
 export function publicCoin(c) {

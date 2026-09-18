@@ -37,4 +37,10 @@ export const signer = {
     const c = await core(); if (c) return c.signAndSubmitCrank(args);
     return httpCall('/sign/crank', args);
   },
+  async releaseLaunchMint(launchId) {
+    try {
+      const c = await core(); if (c) return c.releaseLaunchMint(launchId);
+      return await httpCall('/release', { launchId });
+    } catch (e) { log.warn('releaseLaunchMint failed (non-fatal)', { launchId, err: e.message }); }
+  },
 };

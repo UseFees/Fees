@@ -6,7 +6,7 @@
 import express from 'express';
 import { config } from '../config.mjs';
 import { log } from '../logger.mjs';
-import { newLaunchMint, signAndSubmitLaunch, signAndSubmitCrank, launchWalletPubkey, crankWalletPubkey } from './core.mjs';
+import { newLaunchMint, signAndSubmitLaunch, signAndSubmitCrank, releaseLaunchMint, launchWalletPubkey, crankWalletPubkey } from './core.mjs';
 
 const app = express();
 app.use(express.json({ limit: '256kb' }));
@@ -38,6 +38,8 @@ app.post('/sign/crank', async (req, res) => {
   try { res.json(await signAndSubmitCrank(req.body ?? {})); }
   catch (e) { log.error('sign/crank failed', { code: e.code, msg: e.message }); res.status(422).json({ error: e.message, code: e.code ?? 'error' }); }
 });
+
+app.post('/release', (req, res) => { releaseLaunchMint((req.body ?? {}).launchId); res.json({ ok: true }); });
 
 const port = config.signer.port;
 app.listen(port, '127.0.0.1', () => log.info('signer service listening', { port, launchWallet: launchWalletPubkey() }));
