@@ -12,5 +12,3 @@ X: https://x.com/UseFees
 ## Status
 Public Alpha
 
-## Official $FEES Contract
-Not launched yet.
