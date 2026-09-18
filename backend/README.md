@@ -29,7 +29,7 @@ as a separate process, run `npm run preflight`, and do one launch with a small
 ## Architecture
 
 ```
-Lovable ──HTTP(API_TOKEN)──▶  API (src/api)        holds NO keys, writes gated by LAUNCH_ENABLED
+frontend ──HTTP(API_TOKEN)──▶  API (src/api)        holds NO keys, writes gated by LAUNCH_ENABLED
                                   │
                                   ├── Postgres (coins, launch_intents, receipts, epochs, modules, alt_tables)
                                   │
@@ -108,7 +108,7 @@ Nothing writes to chain until `LAUNCH_ENABLED=true`. For a dev machine without a
 separate signer host you may set `SIGNER_MODE=inprocess` (the API then holds the
 keys — dev only; the process logs a warning).
 
-## What Lovable calls
+## What frontend calls
 
 All under the API base URL, `Authorization: Bearer <API_TOKEN>`, JSON.
 
@@ -157,7 +157,7 @@ On failure it returns a 4xx/5xx with `{ error, code }` and the intent is marked
 
 **Health**: `GET /health`, `GET /ready` (unauthenticated).
 
-### Suggested Lovable flow
+### Suggested frontend flow
 1. `GET /modules`, let the user pick.
 2. Generate a `requestKey` (e.g. a UUID) **once** and keep it for retries.
 3. `POST /launch/prepare` → show the preview (mint, split 90/10, dev buy, size).

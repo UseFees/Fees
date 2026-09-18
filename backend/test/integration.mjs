@@ -1,7 +1,7 @@
 // Thin end-to-end integration test for the FEES backend against the LOCAL
 // cloned validator (the same one E2/E3 use). It boots the real API + the
 // in-process signer + the in-memory DB, creates the launch ALT, and drives the
-// exact Lovable flow, asserting every property the brief lists.
+// exact frontend flow, asserting every property the brief lists.
 //
 // No Postgres, no mainnet. Refuses to run against a public cluster (the genesis
 // guard) and uses only freshly generated local test wallets funded by airdrop.
@@ -111,7 +111,7 @@ async function main() {
       assert.ok(iC >= 0 && iF >= 0 && iU >= 0 && iB >= 0, `missing steps: ${order}`);
       assert.ok(iC < iF && iF < iU && iU < iB, `bad order: ${order.join(',')}`);
     });
-    check('prepare: Lovable-shaped response', () => { for (const k of ['launchId', 'mint', 'sizeBytes', 'expiresAt']) assert.ok(p[k] != null, `missing ${k}`); assert.ok(p.preview.sharingConfig && p.preview.sharingVault); });
+    check('prepare: frontend-shaped response', () => { for (const k of ['launchId', 'mint', 'sizeBytes', 'expiresAt']) assert.ok(p[k] != null, `missing ${k}`); assert.ok(p.preview.sharingConfig && p.preview.sharingVault); });
 
     const mint = new PublicKey(p.mint);
     const sharingConfig = phase0.pdas.sharingConfig(mint);
@@ -127,7 +127,7 @@ async function main() {
     const c = conf.json;
     check('confirm: status confirmed + signature', () => { assert.equal(c.status, 'confirmed'); assert.ok(c.signature); });
     check('confirm: splitVerified === true', () => assert.equal(c.splitVerified, true));
-    check('confirm: coin response Lovable-shaped (split 9000/1000, solscan links)', () => {
+    check('confirm: coin response frontend-shaped (split 9000/1000, solscan links)', () => {
       assert.equal(c.coin.split.moduleBps, 9000); assert.equal(c.coin.split.feesBps, 1000);
       assert.ok(c.solscan.tx.startsWith('http')); assert.ok(c.solscan.token.startsWith('http'));
       assert.equal(c.coin.moduleDest, moduleDest.toBase58()); assert.equal(c.coin.buybackDest, buybackDest.toBase58());

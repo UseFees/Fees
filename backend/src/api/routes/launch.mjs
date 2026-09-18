@@ -1,4 +1,4 @@
-// /launch/prepare and /launch/confirm — the two-step flow Lovable calls.
+// /launch/prepare and /launch/confirm — the two-step flow frontend calls.
 //
 // prepare: idempotent by requestKey. Builds the E3-proven launch tx (creator
 //   ALT, split-before-buy, 9000/1000), asks the signer for an ephemeral mint,
