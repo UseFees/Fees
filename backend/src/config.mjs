@@ -57,6 +57,10 @@ export const config = {
     token: process.env.SIGNER_TOKEN ?? null, // shared secret between API and signer
     launchKeypairPath: process.env.LAUNCH_KEYPAIR_PATH ?? null, // read by the signer service only
     crankKeypairPath: process.env.CRANK_KEYPAIR_PATH ?? null,
+    // Railway/container deployments may provide the same 64-byte Solana secret
+    // array directly as a protected env var so no shell/file bootstrap is needed.
+    launchKeypairJson: process.env.LAUNCH_KEYPAIR_JSON ?? null,
+    crankKeypairJson: process.env.CRANK_KEYPAIR_JSON ?? null,
     port: int('SIGNER_PORT', 8091),
     host: opt('SIGNER_HOST', '127.0.0.1'),
   },
