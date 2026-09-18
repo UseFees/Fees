@@ -29,6 +29,10 @@ export const signer = {
     const c = await core(); if (c) return c.newLaunchMint(launchId);
     return (await httpCall('/mint', { launchId })).mint;
   },
+  async reserveFeesLaunchMint(launchId) {
+    const c = await core(); if (c) return c.reserveFeesLaunchMint(launchId);
+    return (await httpCall('/mint/fees', { launchId })).mint;
+  },
   async signAndSubmitLaunch(args) {
     const c = await core(); if (c) return c.signAndSubmitLaunch(args);
     return httpCall('/sign/launch', args);
