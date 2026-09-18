@@ -58,6 +58,7 @@ export const config = {
     launchKeypairPath: process.env.LAUNCH_KEYPAIR_PATH ?? null, // read by the signer service only
     crankKeypairPath: process.env.CRANK_KEYPAIR_PATH ?? null,
     port: int('SIGNER_PORT', 8091),
+    host: opt('SIGNER_HOST', '127.0.0.1'),
   },
 
   // Hard production gate. Launches and cranks are refused unless true.
