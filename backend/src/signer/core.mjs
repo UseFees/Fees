@@ -59,8 +59,8 @@ export function assertCrankAllowed(instructions, walletPubkey) {
 }
 
 let _launch = null, _crank = null, _buyback = null;
-function launchKp() { if (!_launch) _launch = loadKeypair({ path: config.signer.launchKeypairPath, json: config.signer.launchKeypairJson }, 'launch'); return _launch; }
-function crankKp() { if (!_crank) _crank = loadKeypair({ path: config.signer.crankKeypairPath, json: config.signer.crankKeypairJson }, 'crank'); return _crank; }
+function launchKp() { if (!_launch) _launch = loadKeypair({ path: config.signer.launchKeypairPath, json: config.signer.launchKeypairJson, base58: config.signer.launchKeypairBase58 }, 'launch'); return _launch; }
+function crankKp() { if (!_crank) _crank = loadKeypair({ path: config.signer.crankKeypairPath, json: config.signer.crankKeypairJson, base58: config.signer.crankKeypairBase58 }, 'crank'); return _crank; }
 // Loaded only if a buyback ever runs (buyback is disabled until $FEES exists).
 function buybackKp() { if (!_buyback) _buyback = loadKeypairFromFile(config.buybackKeypairPath, 'buyback'); return _buyback; }
 
