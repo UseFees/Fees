@@ -30,6 +30,14 @@ if (FEES_MINT_ADDRESS) {
   }
 }
 
+const candidateAlt = process.env.CANDIDATE_ALT_ADDRESS;
+if (candidateAlt) {
+  const altPk = new PublicKey(candidateAlt);
+  const alt = await conn.getAddressLookupTable(altPk, { commitment: config.rpcCommitment });
+  const table = alt.value;
+  console.log(`candidate_alt=${candidateAlt} exists=${Boolean(table)} entry_count=${table?.state?.addresses?.length ?? 0} authority=${table?.state?.authority?.toBase58?.() ?? 'none'} last_extended_slot=${table?.state?.lastExtendedSlot ?? 'unknown'}`);
+}
+
 if (config.dbDriver === 'pg') {
   const r = await pool.query('SELECT table_address, creator, entry_count, active, created_at, refreshed_at FROM alt_tables ORDER BY created_at DESC LIMIT 10');
   console.log('alt_rows=' + JSON.stringify(r.rows));
