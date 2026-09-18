@@ -1,0 +1,21 @@
+[Unit]
+Description=FEES hourly epoch worker (holds no keys; cranks distributions)
+After=network-online.target fees-signer.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=fees-app
+Group=fees-app
+WorkingDirectory=/opt/fees/backend
+EnvironmentFile=/etc/fees/app.env
+ExecStart=/usr/bin/node src/epoch/worker.mjs
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

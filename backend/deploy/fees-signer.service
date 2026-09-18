@@ -1,0 +1,25 @@
+[Unit]
+Description=FEES signer (holds launch/crank keys; localhost only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=fees-signer
+Group=fees-signer
+WorkingDirectory=/opt/fees/backend
+EnvironmentFile=/etc/fees/signer.env
+ExecStart=/usr/bin/node src/signer/service.mjs
+Restart=on-failure
+RestartSec=3
+# Hardening: no new privileges, private tmp, read-only system except the key dir.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/opt/fees
+ReadWritePaths=/etc/fees/keys
+# The signer binds 127.0.0.1:8091 (see service.mjs) — do not expose it publicly.
+
+[Install]
+WantedBy=multi-user.target

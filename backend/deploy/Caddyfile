@@ -1,0 +1,9 @@
+# /etc/caddy/Caddyfile — terminates TLS for the API and reverse-proxies to it.
+# Caddy fetches and renews a Let's Encrypt cert automatically for this domain.
+# Point api.usefees.com's DNS A/AAAA record at this server first.
+
+api.usefees.com {
+	encode gzip
+	reverse_proxy 127.0.0.1:8080
+	# The signer (127.0.0.1:8091) is NEVER proxied — it stays private to this host.
+}

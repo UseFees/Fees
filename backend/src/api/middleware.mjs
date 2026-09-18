@@ -1,6 +1,24 @@
 import { log } from '../logger.mjs';
 import { config } from '../config.mjs';
 
+// CORS for a browser origin (usefees.com). Only the origins in CORS_ORIGINS are
+// allowed; if unset, no CORS headers are sent (server-to-server only, the
+// recommended posture — keep API_TOKEN off the browser). Never '*': credentials
+// + wildcard is unsafe and pointless here.
+const corsOrigins = (process.env.CORS_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
+export function cors(req, res, next) {
+  const origin = req.get('origin');
+  if (origin && corsOrigins.includes(origin)) {
+    res.set('Access-Control-Allow-Origin', origin);
+    res.set('Vary', 'Origin');
+    res.set('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'authorization,content-type,x-request-id');
+    res.set('Access-Control-Max-Age', '600');
+  }
+  if (req.method === 'OPTIONS') return res.status(204).end();
+  next();
+}
+
 // Bearer auth for the frontend/BFF. If API_TOKEN is unset (dev), auth is open
 // and a warning is logged once.
 let warned = false;

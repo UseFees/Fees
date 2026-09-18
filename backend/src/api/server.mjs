@@ -5,7 +5,7 @@
 import express from 'express';
 import { config } from '../config.mjs';
 import { log } from '../logger.mjs';
-import { auth, requestId, errorHandler, h } from './middleware.mjs';
+import { auth, cors, requestId, errorHandler, h } from './middleware.mjs';
 import { launchRouter } from './routes/launch.mjs';
 import { coinsRouter, modulesRouter } from './routes/coins.mjs';
 import { assertCluster, connection } from '../solanaClient.mjs';
@@ -13,6 +13,7 @@ import { assertCluster, connection } from '../solanaClient.mjs';
 export function createApp() {
 const app = express();
 app.use(express.json({ limit: '256kb' }));
+app.use(cors);
 app.use(requestId);
 
 // Health/readiness — unauthenticated, no writes.

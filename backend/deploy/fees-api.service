@@ -1,0 +1,22 @@
+[Unit]
+Description=FEES API (holds no keys; calls the signer over localhost)
+After=network-online.target fees-signer.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=fees-app
+Group=fees-app
+WorkingDirectory=/opt/fees/backend
+EnvironmentFile=/etc/fees/app.env
+ExecStart=/usr/bin/node src/api/server.mjs
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+# fees-app cannot read /etc/fees/keys (owned by fees-signer, 600).
+
+[Install]
+WantedBy=multi-user.target

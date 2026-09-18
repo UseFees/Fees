@@ -1,0 +1,26 @@
+{
+  "name": "fees-production",
+  "version": "1.0.0",
+  "description": "FEES — Solana creator fee launchpad",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/UseFees/Fees.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/UseFees/Fees/issues"
+  },
+  "homepage": "https://github.com/UseFees/Fees#readme",
+  "dependencies": {
+    "@solana/web3.js": "^1.99.0"
+  }
+}
