@@ -42,4 +42,4 @@ app.post('/sign/crank', async (req, res) => {
 app.post('/release', (req, res) => { releaseLaunchMint((req.body ?? {}).launchId); res.json({ ok: true }); });
 
 const port = config.signer.port;
-app.listen(port, '127.0.0.1', () => log.info('signer service listening', { port, launchWallet: launchWalletPubkey() }));
+app.listen(port, config.signer.host, () => log.info('signer service listening', { host: config.signer.host, port, launchWallet: launchWalletPubkey() }));
