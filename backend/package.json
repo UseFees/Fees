@@ -1,0 +1,24 @@
+{
+  "name": "fees-backend",
+  "version": "0.1.0-alpha",
+  "private": true,
+  "type": "module",
+  "description": "FEES production launch backend. Wraps the E3-proven atomic launch path (Phase 0 lib/) with an API, DB, signer separation, and an hourly epoch worker. Not a redesign of Phase 0.",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "migrate": "node scripts/migrate.mjs",
+    "init-alt": "node scripts/init_alt.mjs",
+    "api": "node src/api/server.mjs",
+    "signer": "node src/signer/service.mjs",
+    "worker": "node src/epoch/worker.mjs",
+    "preflight": "node scripts/preflight.mjs",
+    "test:integration": "node test/integration.mjs",
+    "test:security": "node test/signer_security.mjs",
+    "check": "node --check src/api/server.mjs && node --check src/epoch/worker.mjs && node --check src/signer/service.mjs && node --check test/integration.mjs && node --check test/signer_security.mjs"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.98.0",
+    "express": "^4.19.2",
+    "pg": "^8.12.0"
+  }
+}
