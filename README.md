@@ -1,2 +1,2 @@
 # Fees
-FEES — Solana creator fee launchpad
+FEES — FEES — programmable creator fees on Solana.
