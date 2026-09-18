@@ -61,6 +61,11 @@ export const config = {
     // array directly as a protected env var so no shell/file bootstrap is needed.
     launchKeypairJson: process.env.LAUNCH_KEYPAIR_JSON ?? null,
     crankKeypairJson: process.env.CRANK_KEYPAIR_JSON ?? null,
+    // Convenience for hosted signers: paste a Solana keypair exported as
+    // base58 directly into a protected service variable. Never expose these
+    // values to the API/frontend.
+    launchKeypairBase58: process.env.LAUNCH_KEYPAIR_BASE58 ?? null,
+    crankKeypairBase58: process.env.CRANK_KEYPAIR_BASE58 ?? null,
     port: int('SIGNER_PORT', 8091),
     host: opt('SIGNER_HOST', '127.0.0.1'),
   },
