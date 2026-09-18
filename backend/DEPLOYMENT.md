@@ -10,7 +10,7 @@ Architecture: **three Node processes + Postgres + a mainnet RPC.**
 ```
 Browser (usefees.com)
    │  (never sees API_TOKEN)
-Lovable BFF / edge function  ──Bearer API_TOKEN──▶  API :8080  ──Bearer SIGNER_TOKEN──▶  Signer :8091 (127.0.0.1, holds keys)
+frontend BFF / edge function  ──Bearer API_TOKEN──▶  API :8080  ──Bearer SIGNER_TOKEN──▶  Signer :8091 (127.0.0.1, holds keys)
                                                       │                                        ▲
                                                   Postgres                                     │
                                    Worker (hourly) ──────────────────────────────────────────┘
@@ -30,7 +30,7 @@ and a **paid mainnet RPC**. A multi-host variant (signer on its own box) is in
 | Postgres | **Neon** (neon.tech) or Supabase or RDS | One database `fees`. Get a pooled connection string with `sslmode=require`. |
 | Compute | **1 VPS**, Ubuntu 22.04, 2 vCPU / 4 GB | Hetzner CPX21 (~€8/mo) or DigitalOcean. |
 | TLS / domain | **Caddy** on the VPS + DNS for `api.usefees.com` | Auto Let's Encrypt. |
-| Frontend | **usefees.com on Lovable** + a server-side proxy | See §8 — the browser must not hold `API_TOKEN`. |
+| Frontend | **usefees.com on frontend** + a server-side proxy | See §8 — the browser must not hold `API_TOKEN`. |
 
 ---
 
@@ -186,10 +186,10 @@ Fix any FAIL before go-live.
 
 ---
 
-## 9. Connect usefees.com / Lovable to the API
+## 9. Connect usefees.com / frontend to the API
 
 **Do not put `API_TOKEN` in the browser.** Route the browser through a
-server-side proxy (Lovable backend action, or a Supabase/Cloudflare edge
+server-side proxy (frontend backend action, or a Supabase/Cloudflare edge
 function) that holds `FEES_API_TOKEN` and forwards to `https://api.usefees.com`.
 
 Proxy (pseudocode):
@@ -204,7 +204,7 @@ const r = await fetch(`https://api.usefees.com${req.path}`, {
 If you truly must call the API from the browser, set `CORS_ORIGINS=https://usefees.com`
 in `app.env` and accept that the token is exposed — not recommended.
 
-Endpoints Lovable uses (see `README.md` "What Lovable calls" for exact shapes):
+Endpoints frontend uses (see `README.md` "What frontend calls" for exact shapes):
 - `GET /modules`
 - `POST /launch/prepare` `{requestKey, name, symbol, uri, moduleId, devBuyLamports}` → preview
 - `POST /launch/confirm` `{launchId}` → `{status:'confirmed', signature, splitVerified, coin, solscan}`; may return **202** `{status:'pending', retryable:true}` — the client should retry `/launch/confirm` with the same `launchId`.
