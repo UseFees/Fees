@@ -66,6 +66,9 @@ export const config = {
     // values to the API/frontend.
     launchKeypairBase58: process.env.LAUNCH_KEYPAIR_BASE58 ?? null,
     crankKeypairBase58: process.env.CRANK_KEYPAIR_BASE58 ?? null,
+    // One-off pre-generated $FEES mint signer. Used only by the dedicated
+    // main-token launch path and must derive exactly FEES_MINT_ADDRESS.
+    feesMintKeypairBase58: process.env.FEES_MINT_KEYPAIR_BASE58 ?? null,
     port: int('SIGNER_PORT', 8091),
     host: opt('SIGNER_HOST', '127.0.0.1'),
   },
