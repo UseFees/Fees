@@ -8,7 +8,7 @@
 import { Keypair, PublicKey, VersionedMessage, VersionedTransaction, SystemProgram } from '@solana/web3.js';
 import { connection, assertCluster } from '../solanaClient.mjs';
 import { config } from '../config.mjs';
-import { pdas, measureSize, PUMP, FEES, AMM, TOKEN, TOKEN_2022, ATA_PROGRAM, SYSTEM } from '../phase0.mjs';
+import { pdas, measureSize, PUMP, FEES, AMM, TOKEN, TOKEN_2022, ATA_PROGRAM, SYSTEM, FEES_MINT_ADDRESS } from '../phase0.mjs';
 import { loadGlobal, loadAlt } from '../launch/alt.mjs';
 import { validateLaunchInstructions, validateCompiledSize } from '../launch/validate.mjs';
 import { loadKeypair } from './keys.mjs';
@@ -58,9 +58,19 @@ export function assertCrankAllowed(instructions, walletPubkey) {
   }
 }
 
-let _launch = null, _crank = null, _buyback = null;
+let _launch = null, _crank = null, _buyback = null, _feesMint = null;
 function launchKp() { if (!_launch) _launch = loadKeypair({ path: config.signer.launchKeypairPath, json: config.signer.launchKeypairJson, base58: config.signer.launchKeypairBase58 }, 'launch'); return _launch; }
 function crankKp() { if (!_crank) _crank = loadKeypair({ path: config.signer.crankKeypairPath, json: config.signer.crankKeypairJson, base58: config.signer.crankKeypairBase58 }, 'crank'); return _crank; }
+function feesMintKp() {
+  if (!_feesMint) {
+    if (!config.signer.feesMintKeypairBase58) throw new Error('FEES mint keypair is not configured');
+    _feesMint = loadKeypair({ base58: config.signer.feesMintKeypairBase58 }, 'FEES mint');
+    if (!FEES_MINT_ADDRESS || _feesMint.publicKey.toBase58() !== FEES_MINT_ADDRESS) {
+      throw new Error('FEES mint keypair does not match the pinned FEES_MINT_ADDRESS');
+    }
+  }
+  return _feesMint;
+}
 // Loaded only if a buyback ever runs (buyback is disabled until $FEES exists).
 function buybackKp() { if (!_buyback) _buyback = loadKeypairFromFile(config.buybackKeypairPath, 'buyback'); return _buyback; }
 
@@ -77,6 +87,23 @@ export function newLaunchMint(launchId) {
   const kp = Keypair.generate();
   mints.set(launchId, { kp, expiresAt: Date.now() + (config.launchIntentTtlSeconds + 30) * 1000 });
   return kp.publicKey.toBase58();
+}
+
+export function reserveFeesLaunchMint(launchId) {
+  gcMints();
+  const kp = feesMintKp();
+  mints.set(launchId, { kp, expiresAt: Date.now() + (config.launchIntentTtlSeconds + 300) * 1000 });
+  return kp.publicKey.toBase58();
+}
+
+export function feesMintSignerStatus() {
+  if (!config.signer.feesMintKeypairBase58) return { configured: false, matches: false, expected: FEES_MINT_ADDRESS ?? null };
+  try {
+    const kp = feesMintKp();
+    return { configured: true, matches: kp.publicKey.toBase58() === FEES_MINT_ADDRESS, expected: FEES_MINT_ADDRESS, publicKey: kp.publicKey.toBase58() };
+  } catch {
+    return { configured: true, matches: false, expected: FEES_MINT_ADDRESS ?? null };
+  }
 }
 
 // Rebuild instruction objects from a compiled v0 message, resolving ALT keys,
