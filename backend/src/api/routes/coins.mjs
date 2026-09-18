@@ -32,5 +32,12 @@ coinsRouter.get('/:mint/receipts', h(async (req, res) => {
 export const modulesRouter = Router();
 modulesRouter.get('/', h(async (_req, res) => {
   const modules = await repo.listModules();
-  res.json({ modules: modules.map((m) => ({ id: m.id, name: m.name, kind: m.kind, moduleDest: m.module_dest, solscan: solscan.account(m.module_dest) })) });
+  res.json({ modules: modules.map((m) => ({
+    id: m.id,
+    name: m.name,
+    kind: m.kind,
+    moduleDest: m.module_dest,
+    requiresDestination: Boolean(m.config?.requiresDestination),
+    solscan: solscan.account(m.module_dest),
+  })) });
 }));
