@@ -16,7 +16,10 @@ import { pool } from '../src/db/pool.mjs';
 
 async function submit(instructions) {
   const { blockhash, lastValidBlockHeight } = await connection().getLatestBlockhash(config.rpcCommitment);
-  const tx = buildV0(config.launchWallet, instructions, blockhash);
+  // ALT create/extend instructions are paid and authorized by the crank wallet.
+  // The transaction fee payer must therefore also be the crank wallet so the
+  // isolated crank signer can satisfy every required signature.
+  const tx = buildV0(config.crankWallet, instructions, blockhash);
   const { signature } = await signer.signAndSubmitCrank({ messageBase64: Buffer.from(tx.message.serialize()).toString('base64') });
   await confirmSignature(signature, blockhash, lastValidBlockHeight);
   return signature;
