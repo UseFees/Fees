@@ -12,7 +12,10 @@ const results = [];
 const check = async (name, fn) => { try { const detail = await fn(); results.push({ name, ok: true, detail }); } catch (e) { results.push({ name, ok: false, detail: e.message }); } };
 
 await check('economics locked 9000/1000', () => { if (MODULE_SHARE_BPS !== 9000 || FEES_SHARE_BPS !== 1000) throw new Error(`got ${MODULE_SHARE_BPS}/${FEES_SHARE_BPS}`); return '9000/1000'; });
-await check('$FEES not invented', () => { if (FEES_MINT_ADDRESS) throw new Error(`FEES_MINT_ADDRESS is set to ${FEES_MINT_ADDRESS}; must stay null until $FEES ships`); return 'FEES_MINT_ADDRESS is null (correct)'; });
+await check('$FEES mint pinned', () => {
+  if (!FEES_MINT_ADDRESS) throw new Error('FEES_MINT_ADDRESS is not configured');
+  return FEES_MINT_ADDRESS;
+});
 await check('RPC cluster matches EXPECTED_GENESIS', async () => { await assertCluster(); return config.expectedGenesis; });
 await check('pump Global readable', async () => { const g = await loadGlobal(); return `create_v2_enabled=${g.createV2Enabled}, creator_fee_bps=${g.creatorFeeBasisPoints}`; });
 await check('launch ALT usable (22 entries)', async () => { const g = await loadGlobal(); const alt = await loadAlt(g); if (!alt.ok) throw new Error(`not usable: ${alt.missing.join(', ')}`); return `${alt.entryCount} entries @ ${config.altAddress.toBase58()}`; });
